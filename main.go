@@ -27,10 +27,6 @@ type instance struct {
 	CMD       *exec.Cmd         `json:"-"`
 }
 
-type globalArgument struct {
-	argument string
-}
-
 var instances []instance
 
 func main() {
