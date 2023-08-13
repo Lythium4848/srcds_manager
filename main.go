@@ -209,6 +209,7 @@ func startInstance(instance *instance) {
 			fmt.Println("SRCDS instance '" + instance.Name + "' closed")
 			instance.State = INACTIVE
 			instance.Button.SetTitle(oldTitle)
+			startInstance(instance)
 		}
 	}()
 }
