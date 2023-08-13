@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/gen2brain/beeep"
 	"github.com/getlantern/systray"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -50,7 +51,13 @@ func saveAllInstances() error {
 }
 
 func loadInstances() ([]instance, error) {
-	data, err := os.ReadFile(fileName)
+	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
 
 	if err != nil {
 		panic(err)
