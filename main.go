@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gen2brain/beeep"
 	"github.com/getlantern/systray"
@@ -19,13 +20,15 @@ const (
 )
 
 type instance struct {
-	Name      string            `json:"name"`
-	Path      string            `json:"path"`
-	Arguments string            `json:"arguments"`
-	Branch    string            `json:"branch"`
-	Button    *systray.MenuItem `json:"-"`
-	State     int               `json:"-"`
-	CMD       *exec.Cmd         `json:"-"`
+	Name         string            `json:"name"`
+	Path         string            `json:"path"`
+	Arguments    string            `json:"arguments"`
+	Branch       string            `json:"branch"`
+	State        int               `json:"-"`
+	CMD          *exec.Cmd         `json:"-"`
+	Button       *systray.MenuItem `json:"-"`
+	DeleteButton *systray.MenuItem `json:"-"`
+	EditButton   *systray.MenuItem `json:"-"`
 }
 
 var instances []instance
@@ -35,7 +38,7 @@ func main() {
 
 	instances = make([]instance, 0)
 
-	instances, _ = loadInstances()
+	instances = loadInstances()
 	systray.Run(onReady, onExit)
 }
 
@@ -47,15 +50,21 @@ func saveAllInstances() error {
 		panic(err)
 	}
 
-	return os.WriteFile(fileName, []byte(jsonData), 0777)
+	return os.WriteFile(fileName, jsonData, 0777)
 }
 
-func loadInstances() ([]instance, error) {
+func loadInstances() []instance {
 	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		return nil, err
+		return nil
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			return
+		}
+
+	}(file)
 
 	data, err := io.ReadAll(file)
 
@@ -66,10 +75,10 @@ func loadInstances() ([]instance, error) {
 	var loadedInstances []instance
 	err = json.Unmarshal(data, &loadedInstances)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling instances: %w", err)
+		return nil
 	}
 
-	return loadedInstances, nil
+	return loadedInstances
 }
 
 //go:embed icons/icon.ico
@@ -84,62 +93,75 @@ var srcdsIcon []byte
 //go:embed icons/srcdsx64.ico
 var srcdsx64Icon []byte
 
-func addNewInstance(srcdsInst *instance, instancesButton *systray.MenuItem) {
-	srcdsInstanceButton := instancesButton.AddSubMenuItem(srcdsInst.Name, srcdsInst.Path)
-	if strings.Contains(srcdsInst.Path, "64") {
-		srcdsInst.Branch = "x86-64"
-	}
-	if srcdsInst.Branch == "x86-64" {
-		srcdsInstanceButton.SetIcon(srcdsx64Icon)
-		srcdsInstanceButton.SetTitle(srcdsInst.Name + " (x86-64)")
-	} else {
-		srcdsInstanceButton.SetIcon(srcdsIcon)
-	}
-
-	srcdsInst.Button = srcdsInstanceButton
-
-	go func(btn *systray.MenuItem, inst *instance) {
-		for {
-			<-btn.ClickedCh
-			if inst.State == INACTIVE {
-				startInstance(inst)
-			} else if inst.State == RUNNING {
-				stopInstance(inst)
-			}
+func clearInstancesTray() {
+	for _, trayItems := range instances {
+		if trayItems.Button != nil {
+			trayItems.Button.Hide()
 		}
-	}(srcdsInstanceButton, srcdsInst)
+	}
+}
+
+var instancesButton *systray.MenuItem
+
+func populateInstancesTray() {
+	clearInstancesTray()
+
+	for i := range instances {
+		inst := &instances[i]
+
+		srcdsInstanceButton := instancesButton.AddSubMenuItem(inst.Name, inst.Path)
+		if strings.Contains(inst.Path, "64") {
+			inst.Branch = "x86-64"
+		}
+		if inst.Branch == "x86-64" {
+			srcdsInstanceButton.SetIcon(srcdsx64Icon)
+			srcdsInstanceButton.SetTitle(inst.Name + " (x86-64)")
+		} else {
+			srcdsInstanceButton.SetIcon(srcdsIcon)
+		}
+
+		inst.Button = srcdsInstanceButton
+
+		go listenButton(inst)
+	}
+
 	err := saveAllInstances()
 	if err != nil {
 		return
 	}
 }
 
+func listenButton(inst *instance) {
+	for range inst.Button.ClickedCh {
+		if inst.State == INACTIVE {
+			startInstance(inst)
+		} else if inst.State == RUNNING {
+			stopInstance(inst)
+		}
+	}
+}
+
 func onReady() {
 	systray.SetIcon(icon)
-	systray.SetTitle("Fuck")
-	systray.SetTooltip("tooltip")
+	systray.SetTitle("SRCDS Manager")
+	systray.SetTooltip("SRCDS Manager")
 
-	// Instances
+	instancesButton = systray.AddMenuItem("Instances", "")
 
-	instancesButton := systray.AddMenuItem("Instances", "")
-	addNewSRCDSInstanceButton := instancesButton.AddSubMenuItem("Add New", "Add new SRCDS instance.")
+	openMenu := systray.AddMenuItem("Manage Instances", "")
 
 	systray.AddSeparator()
 
-	for i := range instances {
-		addNewInstance(&instances[i], instancesButton)
-	}
+	populateInstancesTray()
 
-	// exit
 	exit := systray.AddMenuItem("Exit", "Exit the app")
 
 	go func() {
 		for {
 			select {
-			case <-instancesButton.ClickedCh:
-			case <-addNewSRCDSInstanceButton.ClickedCh:
+			case <-openMenu.ClickedCh:
 				fmt.Println("Opening SRCDS Manager Menu")
-				createNewInstance(instancesButton)
+				openSRCDSManagerMenu()
 			case <-exit.ClickedCh:
 				systray.Quit()
 				os.Exit(0)
@@ -189,7 +211,8 @@ func startInstance(instance *instance) {
 	go func() {
 		err = cmd.Wait()
 		if err != nil {
-			_, ok := err.(*exec.ExitError)
+			var exitError *exec.ExitError
+			ok := errors.As(err, &exitError)
 
 			if ok {
 				fmt.Println("SRCDS Instance '" + instance.Name + "' exited OK.")
