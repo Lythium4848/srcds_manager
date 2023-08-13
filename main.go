@@ -37,7 +37,6 @@ func main() {
 	fmt.Println("Ready.")
 
 	instances = make([]instance, 0)
-	globalArguments = make([]globalArgument, 0)
 
 	instances, _ = loadInstances()
 	systray.Run(onReady, onExit)
