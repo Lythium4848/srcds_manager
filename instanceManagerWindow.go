@@ -43,10 +43,16 @@ func createNewInstance(instancesButton *systray.MenuItem) {
 					argumentsText := arguments.Text()
 
 					if nameText == "" || pathText == "" || argumentsText == "" {
-						info.SetText("All fields must be filled!")
+						err := info.SetText("All fields must be filled!")
+						if err != nil {
+							return
+						}
 						info.SetTextColor(walk.RGB(255, 0, 0))
 					} else {
-						info.SetText("Creating SRCDS instance...")
+						err := info.SetText("Creating SRCDS instance...")
+						if err != nil {
+							return
+						}
 						info.SetTextColor(walk.RGB(0, 255, 0))
 						newInstance := instance{
 							Name:      nameText,
@@ -71,7 +77,10 @@ func createNewInstance(instancesButton *systray.MenuItem) {
 	go func() {
 		if <-shouldClose {
 			mainWindow.Synchronize(func() {
-				mainWindow.Close()
+				err := mainWindow.Close()
+				if err != nil {
+					return
+				}
 			})
 		}
 	}()

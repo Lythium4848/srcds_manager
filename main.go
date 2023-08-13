@@ -32,7 +32,6 @@ type globalArgument struct {
 }
 
 var instances []instance
-var globalArguments []globalArgument
 
 func main() {
 	fmt.Println("Ready.")
@@ -107,7 +106,10 @@ func addNewInstance(srcdsInst *instance, instancesButton *systray.MenuItem) {
 			}
 		}
 	}(srcdsInstanceButton, srcdsInst)
-	saveAllInstances()
+	err := saveAllInstances()
+	if err != nil {
+		return
+	}
 }
 
 func onReady() {
@@ -173,7 +175,10 @@ func startInstance(instance *instance) {
 	err := cmd.Start()
 
 	if err != nil {
-		beeep.Notify("Error starting SRCDS instance!", "There was an error starting the '"+instance.Name+"' SRCDS instance!", "icons/icon.png")
+		err := beeep.Notify("Error starting SRCDS instance!", "There was an error starting the '"+instance.Name+"' SRCDS instance!", "icons/icon.png")
+		if err != nil {
+			return
+		}
 		instance.State = ERRORED
 		instance.Button.SetTitle(oldTitle + " [ERRORED]")
 		return
@@ -191,7 +196,10 @@ func startInstance(instance *instance) {
 			} else {
 				fmt.Println("SRCDS Instance '" + instance.Name + "' exited BADLY.")
 				fmt.Println(err)
-				beeep.Notify("Error while exiting SRCDS instance!", "There was an error while exiting the '"+instance.Name+"' SRCDS instance!", "icons/icon.png")
+				err := beeep.Notify("Error while exiting SRCDS instance!", "There was an error while exiting the '"+instance.Name+"' SRCDS instance!", "icons/icon.png")
+				if err != nil {
+					return
+				}
 				instance.State = ERRORED
 				instance.Button.SetTitle(oldTitle + " [ERRORED]")
 			}
@@ -206,5 +214,8 @@ func startInstance(instance *instance) {
 func stopInstance(instance *instance) {
 	fmt.Println("Stopping SRCDS instance: " + instance.Name)
 	instance.State = RUNNING
-	instance.CMD.Process.Kill()
+	err := instance.CMD.Process.Kill()
+	if err != nil {
+		return
+	}
 }
